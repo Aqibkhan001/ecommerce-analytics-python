@@ -1,0 +1,402 @@
+pip install plotly
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
+import os
+print("All libraries loaded")
+df_orders = pd.read_csv(Project_02\Data\olist_orders_dataset.csv")
+df_items = pd.read_csv(Project_02\Data\olist_order_items_dataset.csv")
+df_customers = pd.read_csv(Project_02\Data\olist_customers_dataset.csv")
+df_products = pd.read_csv(Project_02\Data\olist_products_dataset.csv")
+df_sellers = pd.read_csv(Project_02\Data\olist_sellers_dataset.csv")
+df_payments = pd.read_csv(Project_02\Data\olist_order_payments_dataset.csv")
+df_reviews = pd.read_csv(Project_02\Data\olist_order_reviews_dataset.csv")
+df_geo = pd.read_csv(Project_02\Data\olist_geolocation_dataset.csv")
+df_translation = pd.read_csv(Project_02\Data\product_category_name_translation.csv")
+print("All datasets are loaded")
+
+print("Orders:", df_orders.shape)
+print("Items:", df_items.shape)
+print("Customers:", df_customers.shape)
+print("Products:", df_products.shape)
+print("Sellers:", df_sellers.shape)
+print("Payments:", df_payments.shape)
+print("Reviews:", df_reviews.shape)
+print("Geo:", df_geo.shape)
+print("Translation:", df_translation.shape)
+df_orders.head(2)
+
+df_customers.head(2)
+df_items.head(2)
+
+df_products.head(2)
+
+
+df_sellers.head(2)
+df_payments.head(2)
+df_reviews.head(2)
+df_geo.head(2)
+df_translation.head(2)
+# Step 1 — merge orders + customers
+df_master = df_orders.merge(df_customers, on='customer_id', how='left')
+
+# Step 2 — merge + items
+df_master = df_master.merge(df_items, on='order_id', how='left')
+
+# Step 3 — merge + products
+df_master = df_master.merge(df_products, on='product_id', how='left')
+
+# Step 4 — merge + sellers
+df_master = df_master.merge(df_sellers, on='seller_id', how='left')
+
+# Step 5 — merge + payments
+df_master = df_master.merge(df_payments, on='order_id', how='left')
+
+# Step 6 — merge + reviews
+df_master = df_master.merge(df_reviews, on='order_id', how='left')
+
+# Step 7 — merge + translation
+df_master = df_master.merge(df_translation, on='product_category_name', how='left')
+
+print("Master shape:", df_master.shape)
+df_master.shape
+print("Rows:", df_master.shape[0])
+print("Columns:", df_master.shape[1])
+
+df_master.head()
+df_master.isnull().sum()
+df_master.isnull().sum()
+print("Duplicates:", df_master.duplicated().sum())
+print(df_master.dtypes)
+print(df_master.isnull().sum()[df_master.isnull().sum() > 0])
+# Step 1 — keep only delivered orders
+df_master = df_master[df_master['order_status'] == 'delivered']
+
+# Step 2 — drop rows where order_item_id is null
+df_master = df_master.dropna(subset=['order_item_id'])
+
+# Step 3 — drop rows where payment_value is null
+df_master = df_master.dropna(subset=['payment_value'])
+
+# Step 4 — fill unknown categories
+df_master['product_category_name_english'] = df_master['product_category_name_english'].fillna('Unknown')
+
+# Step 5 — convert date columns
+date_cols = ['order_purchase_timestamp', 'order_delivered_customer_date', 
+             'order_estimated_delivery_date']
+for col in date_cols:
+    df_master[col] = pd.to_datetime(df_master[col])
+
+print("Clean shape:", df_master.shape)
+print("Nulls remaining:", df_master.isnull().sum().sum())
+# Check remaining nulls in columns we actually need
+cols_needed = ['order_id', 'customer_unique_id', 'order_purchase_timestamp',
+               'price', 'freight_value', 'payment_value', 
+               'product_category_name_english', 'customer_state']
+
+print(df_master[cols_needed].isnull().sum())
+df_master[cols_needed].head(2)
+df_master['total_revenue'] = df_master["price"]  + df_master["freight_value"]
+print(df_master['total_revenue'].describe())
+df_master['total_revenue'].head(5)
+df_master['year_month'] = df_master['order_purchase_timestamp'].dt.to_period('M')
+monthly_revenue = df_master.groupby('year_month')['total_revenue'].sum().reset_index()
+print(monthly_revenue)
+plt.figure(figsize=(12, 5))
+plt.plot(monthly_revenue['year_month'].astype(str), monthly_revenue['total_revenue'], 
+         marker='o', color='steelblue', linewidth=2)
+plt.title('Monthly Revenue Trend (2016-2018)', fontsize=14, fontweight='bold')
+plt.xlabel('Month')
+plt.ylabel('Revenue (R$)')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+category_revenue = df_master.groupby('product_category_name_english')['total_revenue'].sum().reset_index()
+category_revenue = category_revenue.sort_values('total_revenue', ascending = False).head(10)
+print(category_revenue)
+plt.figure(figsize=(10, 6))
+sns.barplot(data=category_revenue, x='product_category_name_english', y='total_revenue', palette='Blues_r')
+plt.title('Top 10 Product Categories by Revenue', fontsize=14, fontweight='bold')
+plt.xlabel('Total Revenue (R$)')
+plt.ylabel('Category')
+plt.tight_layout()
+plt.show()
+state_revenue = df_master.groupby('customer_state')['total_revenue'].sum().reset_index()
+state_revenue = state_revenue.sort_values('total_revenue', ascending=False).head(10)
+print(state_revenue)
+plt.figure(figsize=(10, 6))
+sns.barplot(data=state_revenue, x='customer_state', y='total_revenue', palette='Blues_r')
+plt.title('Top 10 States by Revenue', fontsize=14, fontweight='bold')
+plt.xlabel('Customer_State')
+plt.ylabel('Total Revenue (Million$)')
+plt.tight_layout()
+plt.show()
+payment_counts=df_master.groupby('payment_type')['order_id'].nunique().reset_index()
+payment_counts_columns = ['payment_type','order_count']
+print(payment_counts)
+payment_counts['percentage'] = (payment_counts['order_id'] / payment_counts['order_id'].sum() * 100).round(2)
+print(payment_counts)
+plt.figure(figsize=(8, 5))
+plt.bar(payment_counts['payment_type'], payment_counts['percentage'], color='steelblue')
+plt.title('Payment Method Breakdown')
+plt.xlabel('Payment Type')
+plt.ylabel('Percentage of Orders (%)')
+plt.tight_layout()
+plt.savefig('payment_breakdown.png')
+plt.show()
+repeat_buyers = df_master.groupby('customer_id')['order_id'].nunique().reset_index()
+repeat_buyers.columns = ['customer_id', 'order_count']
+repeat_buyers['buyer_type'] = repeat_buyers['order_count'].apply(lambda x: 'Repeat' if x > 1 else 'One-time')
+summary = repeat_buyers['buyer_type'].value_counts().reset_index()
+summary.columns = ['buyer_type', 'customer_count']
+print(summary)
+print(repeat_buyers['order_count'].value_counts())
+review_dist = df_master.groupby('review_score')['order_id'].nunique().reset_index()
+review_dist.columns = ['review_score', 'order_count']
+print(review_dist)
+plt.figure(figsize=(8, 5))
+plt.bar(review_dist['review_score'], review_dist['order_count'], color='steelblue')
+plt.title('Review Breakdown')
+plt.xlabel('Review Score')
+plt.ylabel('Order Count')
+plt.tight_layout()
+plt.savefig('review_breakdown.png')
+plt.show()
+from datetime import datetime
+
+# Reference date — day after last order
+reference_date = df_master['order_purchase_timestamp'].max() + pd.Timedelta(days=1)
+
+rfm = df_master.groupby('customer_unique_id').agg(
+    Recency=('order_purchase_timestamp', lambda x: (reference_date - x.max()).days),
+    Frequency=('order_id', 'nunique'),
+    Monetary=('total_revenue', 'sum')
+).reset_index()
+
+print(rfm.head())
+print(rfm.shape)
+rfm['R_Score'] = pd.qcut(rfm['Recency'], q=5, labels=[5,4,3,2,1])
+rfm['F_Score'] = pd.qcut(rfm['Frequency'].rank(method='first'), q=5, labels=[1,2,3,4,5])
+rfm['M_Score'] = pd.qcut(rfm['Monetary'], q=5, labels=[1,2,3,4,5])
+
+rfm['RFM_Score'] = rfm['R_Score'].astype(str) + rfm['F_Score'].astype(str) + rfm['M_Score'].astype(str)
+
+print(rfm.head())
+
+def assign_segment(row):
+    r = int(row['R_Score'])
+    f = int(row['F_Score'])
+    m = int(row['M_Score'])
+    
+    if r >= 4 and f >= 4 and m >= 4:
+        return 'Champions'
+    elif r >= 3 and f >= 3:
+        return 'Loyal Customers'
+    elif r >= 4 and f <= 2:
+        return 'Promising New'
+    elif r <= 2 and f >= 3:
+        return 'At Risk'
+    elif r <= 2 and f <= 2 and m <= 2:
+        return 'Lost'
+    else:
+        return 'Needs Attention'
+
+rfm['Segment'] = rfm.apply(assign_segment, axis=1)
+print(rfm['Segment'].value_counts())
+segment_counts = rfm['Segment'].value_counts().reset_index()
+segment_counts.columns = ['Segment', 'Customer_Count']
+
+plt.figure(figsize=(10, 6))
+sns.barplot(data=segment_counts, x='Segment', y='Customer_Count', palette='Blues_r')
+plt.title('Customer Segments by RFM Analysis', fontsize=14, fontweight='bold')
+plt.xlabel('Segment')
+plt.ylabel('Number of Customers')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+segment_revenue = rfm.groupby('Segment')['Monetary'].sum().reset_index()
+segment_revenue = segment_revenue.sort_values('Monetary', ascending=False)
+print(segment_revenue)
+
+plt.figure(figsize=(10, 6))
+sns.barplot(data=segment_revenue, x='Segment', y='Monetary', palette='Blues_r')
+plt.title('Customer Segments by Revenue', fontsize=14, fontweight='bold')
+plt.xlabel('Segment')
+plt.ylabel('Revenuve in Million')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+# Step 1 — get order month and each customer's first-purchase (cohort) month
+df_master['order_month'] = df_master['order_purchase_timestamp'].dt.to_period('M')
+
+df_master['cohort_month'] = df_master.groupby('customer_unique_id')['order_month'].transform('min')
+
+print(df_master[['customer_unique_id', 'order_month', 'cohort_month']].head())
+# Step 2 — cohort index = months since first purchase
+def get_cohort_index(df):
+    order_year = df['order_month'].dt.year
+    order_mon = df['order_month'].dt.month
+    cohort_year = df['cohort_month'].dt.year
+    cohort_mon = df['cohort_month'].dt.month
+
+    year_diff = order_year - cohort_year
+    month_diff = order_mon - cohort_mon
+
+    return year_diff * 12 + month_diff + 1   # +1 so first purchase = index 1
+
+df_master['cohort_index'] = get_cohort_index(df_master)
+
+print(df_master[['customer_unique_id', 'cohort_month', 'order_month', 'cohort_index']].head())
+# Step 3 — count unique customers per cohort_month + cohort_index
+cohort_data = df_master.groupby(['cohort_month', 'cohort_index'])['customer_unique_id'].nunique().reset_index()
+cohort_data.columns = ['cohort_month', 'cohort_index', 'n_customers']
+
+print(cohort_data.head(10))
+
+# reshape into a matrix: rows = cohort_month, columns = cohort_index
+cohort_counts = cohort_data.pivot_table(index='cohort_month', columns='cohort_index', values='n_customers')
+
+print(cohort_counts.head(10))
+# Step 4 — convert raw counts to % retention
+cohort_sizes = cohort_counts.iloc[:, 0]   # first column = each cohort's size at index 1
+
+retention = cohort_counts.divide(cohort_sizes, axis=0) * 100
+
+print(retention.round(1).head(10))
+# Step 5 — heatmap of cohort retention
+plt.figure(figsize=(15, 9))
+sns.heatmap(retention, annot=True, fmt='.1f', cmap='Blues', linewidths=0.5, cbar_kws={'label': '% Retention'})
+plt.title('Cohort Retention Heatmap (%)', fontsize=14, fontweight='bold')
+plt.xlabel('Cohort Index (Months Since First Purchase)')
+plt.ylabel('Cohort Month')
+plt.tight_layout()
+plt.savefig('cohort_retention_heatmap.png')
+plt.show()
+# Step 6 — average retention % per month across all cohorts
+avg_retention = retention.mean(axis=0)
+
+print(avg_retention.round(2))
+
+plt.figure(figsize=(12, 6))
+plt.plot(avg_retention.index, avg_retention.values, marker='o', color='steelblue', linewidth=2)
+plt.title('Average Customer Retention by Month Since First Purchase', fontsize=14, fontweight='bold')
+plt.xlabel('Months Since First Purchase')
+plt.ylabel('Average Retention (%)')
+plt.tight_layout()
+plt.savefig('avg_retention_curve.png')
+plt.show()
+# Step 1 — Average Order Value (AOV) per customer
+customer_orders = df_master.groupby('customer_unique_id').agg(
+    total_revenue=('total_revenue', 'sum'),
+    order_count=('order_id', 'nunique')
+).reset_index()
+
+customer_orders['AOV'] = customer_orders['total_revenue'] / customer_orders['order_count']
+
+print(customer_orders.head())
+print(customer_orders['AOV'].describe())
+# Step 2 — Purchase frequency (raw order count) + first/last purchase dates
+customer_dates = df_master.groupby('customer_unique_id').agg(
+    first_purchase=('order_purchase_timestamp', 'min'),
+    last_purchase=('order_purchase_timestamp', 'max')
+).reset_index()
+
+# merge into our running customer-level table
+customer_orders = customer_orders.merge(customer_dates, on='customer_unique_id', how='left')
+
+print(customer_orders.head())
+# Step 3 — Customer lifespan in months
+customer_orders['lifespan_days'] = (customer_orders['last_purchase'] - customer_orders['first_purchase']).dt.days
+customer_orders['lifespan_months'] = customer_orders['lifespan_days'] / 30.44   # avg days per month
+
+print(customer_orders[['customer_unique_id', 'order_count', 'lifespan_days', 'lifespan_months']].head())
+print(customer_orders['lifespan_months'].describe())
+# Step 4 — Calculate CLV per customer
+# Give every customer a minimum lifespan of 1 month to avoid divide-by-zero
+customer_orders['lifespan_adj'] = customer_orders['lifespan_months'].apply(lambda x: max(x, 1))
+
+customer_orders['purchase_frequency'] = customer_orders['order_count'] / customer_orders['lifespan_adj']
+
+customer_orders['CLV'] = customer_orders['AOV'] * customer_orders['purchase_frequency'] * customer_orders['lifespan_adj']
+
+print(customer_orders[['customer_unique_id', 'AOV', 'order_count', 'lifespan_adj', 'purchase_frequency', 'CLV']].head(10))
+print(customer_orders['CLV'].describe())
+
+# sanity check — CLV should equal total_revenue for every customer with this formula
+print((customer_orders['CLV'].round(2) == customer_orders['total_revenue'].round(2)).mean())
+# Step 5 — merge CLV data with RFM segments
+clv_segment = customer_orders.merge(rfm[['customer_unique_id', 'Segment']], on='customer_unique_id', how='left')
+
+segment_clv = clv_segment.groupby('Segment').agg(
+    avg_CLV=('CLV', 'mean'),
+    total_CLV=('CLV', 'sum'),
+    customer_count=('customer_unique_id', 'nunique')
+).reset_index().sort_values('total_CLV', ascending=False)
+
+print(segment_clv)
+# Step 4 — Calculate CLV per customer
+# Give every customer a minimum lifespan of 1 month to avoid divide-by-zero
+customer_orders['lifespan_adj'] = customer_orders['lifespan_months'].apply(lambda x: max(x, 1))
+
+customer_orders['purchase_frequency'] = customer_orders['order_count'] / customer_orders['lifespan_adj']
+
+customer_orders['CLV'] = customer_orders['AOV'] * customer_orders['purchase_frequency'] * customer_orders['lifespan_adj']
+
+print(customer_orders[['customer_unique_id', 'AOV', 'order_count', 'lifespan_adj', 'purchase_frequency', 'CLV']].head(10))
+print(customer_orders['CLV'].describe())
+
+# sanity check — CLV should equal total_revenue for every customer with this formula
+print((customer_orders['CLV'].round(2) == customer_orders['total_revenue'].round(2)).mean())
+# Step 6 — Top 100 customers by CLV
+top_100_clv = customer_orders.sort_values('CLV', ascending=False).head(100)
+
+print(top_100_clv[['customer_unique_id', 'AOV', 'order_count', 'CLV']].head(10))
+print("\nTop 100 total CLV:", top_100_clv['CLV'].sum())
+print("Top 100 % of total CLV:", (top_100_clv['CLV'].sum() / customer_orders['CLV'].sum() * 100).round(2), "%")
+# Step 7 — 12-month revenue projection
+customer_orders['projected_revenue_12mo'] = customer_orders['AOV'] * customer_orders['purchase_frequency'] * 12
+
+total_projected_12mo = customer_orders['projected_revenue_12mo'].sum()
+
+print(customer_orders[['customer_unique_id', 'AOV', 'purchase_frequency', 'projected_revenue_12mo']].head(10))
+print(f"\nTotal projected 12-month revenue across all customers: R${total_projected_12mo:,.2f}")
+
+# compare against actual historical total revenue, for context
+print(f"Actual total historical revenue: R${df_master['total_revenue'].sum():,.2f}")
+# Step 8 — CLV distribution plot
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+sns.histplot(customer_orders['CLV'], bins=50, color='steelblue', ax=axes[0])
+axes[0].set_title('CLV Distribution (Raw)', fontweight='bold')
+axes[0].set_xlabel('CLV (R$)')
+
+sns.histplot(customer_orders['CLV'], bins=50, color='steelblue', log_scale=True, ax=axes[1])
+axes[1].set_title('CLV Distribution (Log Scale)', fontweight='bold')
+axes[1].set_xlabel('CLV (R$, log scale)')
+
+plt.tight_layout()
+plt.savefig('clv_distribution.png')
+plt.show()
+# Step 9 — CLV by state
+customer_state = df_master.groupby('customer_unique_id')['customer_state'].first().reset_index()
+
+clv_state = customer_orders.merge(customer_state, on='customer_unique_id', how='left')
+
+state_clv = clv_state.groupby('customer_state').agg(
+    avg_CLV=('CLV', 'mean'),
+    total_CLV=('CLV', 'sum'),
+    customer_count=('customer_unique_id', 'nunique')
+).reset_index().sort_values('total_CLV', ascending=False)
+
+print(state_clv.head(10))
+
+plt.figure(figsize=(10, 6))
+sns.barplot(data=state_clv.head(10), x='customer_state', y='total_CLV', palette='Blues_r')
+plt.title('Top 10 States by Total CLV', fontsize=14, fontweight='bold')
+plt.xlabel('Customer State')
+plt.ylabel('Total CLV (R$)')
+plt.tight_layout()
+plt.savefig('clv_by_state.png')
+plt.show()
